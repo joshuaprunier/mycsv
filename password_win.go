@@ -3,37 +3,43 @@
 package main
 
 import (
+	"io"
 	"os"
 	"syscall"
 )
 
-// SetConsoleMode function can be used to change value of ENABLE_ECHO_INPUT:
+// SetConsoleMode function can be used to change value of enableEchoInput:
 // http://msdn.microsoft.com/en-us/library/windows/desktop/ms686033(v=vs.85).aspx
-const ENABLE_ECHO_INPUT = 0x0004
+const enableEchoInput = 0x0004
 
-func readPassword() (string, error) {
+// Windows specific readPassword() function
+func readPassword() ([]byte, error) {
 	hStdin := syscall.Handle(os.Stdin.Fd())
 	var oldMode uint32
 
+	var err error
 	err = syscall.GetConsoleMode(hStdin, &oldMode)
 	if err != nil {
-		return
+		checkErr(err)
+		//		return nil, err
 	}
 
-	var newMode uint32 = (oldMode &^ ENABLE_ECHO_INPUT)
+	var newMode = (oldMode &^ enableEchoInput)
 
 	err = setConsoleMode(hStdin, newMode)
 	defer setConsoleMode(hStdin, oldMode)
 	if err != nil {
-		return
+		checkErr(err)
+		//		return nil, err
 	}
 
 	var buf [16]byte
 	var ret []byte
 	for {
-		n, err := syscall.Read(0, buf[:])
+		n, err := os.Stdin.Read(buf[:])
 		if err != nil {
-			return nil, err
+			checkErr(err)
+			//			return nil, err
 		}
 
 		if n == 0 {
@@ -43,7 +49,13 @@ func readPassword() (string, error) {
 			break
 		}
 
+		// Remove new line
 		if buf[n-1] == '\n' {
+			n--
+		}
+
+		// Remove carriage return
+		if buf[n-1] == '\r' {
 			n--
 		}
 
