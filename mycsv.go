@@ -11,8 +11,8 @@ import (
 	"runtime/pprof"
 	"time"
 
+	"./csv"
 	_ "github.com/go-sql-driver/mysql" // Go MySQL driver
-	"github.com/joshuaprunier/csv"
 )
 
 // 25MB
