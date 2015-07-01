@@ -13,6 +13,7 @@ import (
 
 	"./csv"
 	_ "github.com/go-sql-driver/mysql" // Go MySQL driver
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // 25MB
@@ -89,8 +90,8 @@ func main() {
 	// If query not provided read from standard in
 	var query string
 	if *sqlQuery == "" {
-		//query = "select id as col1, words as 'col 2', static 'the last col' from jjp.jjp"
-		query = "select * from jjp.jjp"
+		fmt.Println("You must supply a query")
+		os.Exit(1)
 	} else {
 		query = *sqlQuery
 	}
@@ -123,7 +124,12 @@ func main() {
 	// If password is blank prompt user
 	if *dbPass == "" {
 		fmt.Println("Enter password: ")
-		pwd, err := readPassword()
+		//	if runtime.GOOS == "windows" {
+		//	} else {
+		//	}
+		//	fmt.Println(runtime.GOOS)
+		//	fmt.Println(os.Stdin.Fd())
+		pwd, err := terminal.ReadPassword(int(os.Stdin.Fd()))
 		checkErr(err)
 		*dbPass = string(pwd)
 	}

@@ -4,7 +4,7 @@
 echo
 echo "Building Linux"
 mkdir -p bin/linux
-go build -o bin/linux/mycsv mycsv.go password_linux.go term_linux.go
+go build -o bin/linux/mycsv mycsv.go
 if [[ $? -eq 0 ]]; then
 	echo "	mycsv - OK"
 else
@@ -15,7 +15,7 @@ fi
 echo
 echo "Building Windows"
 mkdir -p bin/windows
-GOOS=windows GOARCH=amd64 go build -o bin/windows/mycsv.exe mycsv.go password_win.go
+GOOS=windows GOARCH=amd64 go build -o bin/windows/mycsv.exe mycsv.go
 if [[ $? -eq 0 ]]; then
 	echo "	mycsv.exe - OK"
 else
@@ -26,7 +26,7 @@ fi
 echo
 echo "Building Darwin"
 mkdir -p bin/darwin
-GOOS=darwin GOARCH=amd64 go build -o bin/darwin/mycsv mycsv.go password_linux.go term_darwin.go
+GOOS=darwin GOARCH=amd64 go build -o bin/darwin/mycsv mycsv.go
 if [[ $? -eq 0 ]]; then
 	echo "	mycsv_mac - OK"
 else
