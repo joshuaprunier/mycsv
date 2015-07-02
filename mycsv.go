@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"runtime/pprof"
 	"time"
 
@@ -39,6 +40,9 @@ type (
 
 func main() {
 	start := time.Now()
+
+	// Listen for SIGINT (ctrl+c)
+	catchNotifications()
 
 	// Profiling flags
 	var cpuprofile = flag.String("debug_cpu", "", "write cpu profile to file")
@@ -124,13 +128,12 @@ func main() {
 	// If password is blank prompt user
 	if *dbPass == "" {
 		fmt.Println("Enter password: ")
-		//	if runtime.GOOS == "windows" {
-		//	} else {
-		//	}
-		//	fmt.Println(runtime.GOOS)
-		//	fmt.Println(os.Stdin.Fd())
 		pwd, err := terminal.ReadPassword(int(os.Stdin.Fd()))
-		checkErr(err)
+		if err != nil {
+			if err != io.EOF {
+				checkErr(err)
+			}
+		}
 		*dbPass = string(pwd)
 	}
 
@@ -173,6 +176,31 @@ func checkErr(e error) {
 	if e != nil {
 		log.Panic(e)
 	}
+}
+
+func catchNotifications() {
+	state, err := terminal.GetState(int(os.Stdin.Fd()))
+	checkErr(err)
+
+	// Trap for SIGINT
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+
+	var timer time.Time
+	go func() {
+		for sig := range sigChan {
+			if time.Now().Sub(timer) < time.Second*5 {
+				terminal.Restore(int(os.Stdin.Fd()), state)
+				os.Exit(0)
+			}
+
+			fmt.Println()
+			fmt.Println(sig, "signal caught!")
+			fmt.Println("Send signal again within 5 seconds to exit")
+
+			timer = time.Now()
+		}
+	}()
 }
 
 // Create a database connection object
