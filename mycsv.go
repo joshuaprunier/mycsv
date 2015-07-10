@@ -6,21 +6,32 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
 	"runtime/pprof"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/crypto/ssh/terminal"
 
 	"./csv"
-	_ "github.com/go-sql-driver/mysql" // Go MySQL driver
-	"golang.org/x/crypto/ssh/terminal"
+	_ "github.com/go-sql-driver/mysql"
 )
 
-// 25MB
-const flushSize = 26214400
+const (
+	// Amount of CSV write data to buffer between flushes
+	flushSize = 26214400 // 25MB
 
-// Type definitions
+	// Timeout length where ctrl+c is ignored
+	// If a second ctrl+c is sent before the timeout the program exits
+	signalTimeout = 3 // Seconds
+
+	// Timeout length to wait for a query string sent via stdin
+	stdinTimeout = 10 // Milliseconds
+)
+
 type (
 	// dbInfo contains information necessary to connect to a database
 	dbInfo struct {
@@ -41,9 +52,6 @@ type (
 func main() {
 	start := time.Now()
 
-	// Listen for SIGINT (ctrl+c)
-	catchNotifications()
-
 	// Profiling flags
 	var cpuprofile = flag.String("debug_cpu", "", "write cpu profile to file")
 	var memprofile = flag.String("debug_mem", "", "write memory profile to this file")
@@ -54,6 +62,12 @@ func main() {
 	dbHost := flag.String("host", "", "Database")
 	dbPort := flag.String("port", "3306", "Port")
 	dbTLS := flag.Bool("tls", false, "TLS")
+
+	// CSV write flags
+	csvDelimiter := flag.String("d", ",", "CSV field delimiter")
+	csvQuotes := flag.String("q", "\"", "CSV quote character")
+	csvEscape := flag.String("e", "\\", "CSV escape character")
+	csvEmpty := flag.Bool("qe", true, "CSV quote empty fields")
 
 	csvFile := flag.String("file", "", "CSV filename")
 	sqlQuery := flag.String("query", "", "MySQL query")
@@ -75,11 +89,11 @@ func main() {
 	}
 
 	// Check if an output file was supplied otherwise use standard out
-	var dest io.Writer
+	var writerDest io.Writer
 	var err error
 	if *csvFile == "" {
 		fmt.Println("CSV output will be written to standard out")
-		dest = os.Stdout
+		writerDest = os.Stdout
 	} else {
 		f, err := os.Open(*csvFile)
 		if err == nil {
@@ -88,17 +102,37 @@ func main() {
 			os.Exit(1)
 		}
 		f.Close()
-		dest, err = os.Create(*csvFile)
+		writerDest, err = os.Create(*csvFile)
 	}
 
 	// If query not provided read from standard in
 	var query string
+	queryChan := make(chan string)
+	defer close(queryChan)
 	if *sqlQuery == "" {
-		fmt.Println("You must supply a query")
-		os.Exit(1)
+		go func() {
+			b, err := ioutil.ReadAll(os.Stdin)
+			checkErr(err)
+
+			queryChan <- string(b)
+		}()
+
+		select {
+		case q := <-queryChan:
+			query = q
+		case <-time.After(time.Millisecond * stdinTimeout):
+			fmt.Println("You must supply a query")
+			os.Exit(1)
+		}
 	} else {
 		query = *sqlQuery
 	}
+
+	// Check if Stdin has been redirected and reset so the user can be prompted for a password
+	checkStdin()
+
+	// Listen for SIGINT (ctrl+c)
+	//catchNotifications()
 
 	// Make sure the query is a select
 	if query[0:6] != "select" {
@@ -137,6 +171,13 @@ func main() {
 		*dbPass = string(pwd)
 	}
 
+	// Create a new CSV writer
+	CSVWriter := csv.NewWriter(writerDest)
+	CSVWriter.Comma, _ = utf8.DecodeLastRuneInString(*csvDelimiter)
+	CSVWriter.Quotes, _ = utf8.DecodeLastRuneInString(*csvQuotes)
+	CSVWriter.Escape, _ = utf8.DecodeLastRuneInString(*csvEscape)
+	CSVWriter.QuoteEmpty = *csvEmpty
+
 	// Populate dbInfo struct with cli flags
 	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, TLS: *dbTLS}
 
@@ -153,7 +194,7 @@ func main() {
 	quitChan := make(chan bool)
 	goChan := make(chan bool)
 	go readRows(db, query, dataChan, quitChan, goChan)
-	writeCSV(dest, dataChan, goChan)
+	writeCSV(CSVWriter, dataChan, goChan)
 
 	<-quitChan
 	close(quitChan)
@@ -189,14 +230,14 @@ func catchNotifications() {
 	var timer time.Time
 	go func() {
 		for sig := range sigChan {
-			if time.Now().Sub(timer) < time.Second*5 {
+			if time.Now().Sub(timer) < time.Second*signalTimeout {
 				terminal.Restore(int(os.Stdin.Fd()), state)
 				os.Exit(0)
 			}
 
 			fmt.Println()
 			fmt.Println(sig, "signal caught!")
-			fmt.Println("Send signal again within 5 seconds to exit")
+			fmt.Printf("Send signal again within %v seconds to exit\n", signalTimeout)
 
 			timer = time.Now()
 		}
@@ -295,12 +336,7 @@ func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan c
 }
 
 // writeCSV writes csv output
-func writeCSV(w io.Writer, dataChan chan []NullRawBytes, goChan chan bool) {
-	out := csv.NewWriter(w)
-	out.Quotes = '"'
-	out.Escape = '\\'
-	out.QuoteEmpty = true
-
+func writeCSV(w *csv.Writer, dataChan chan []NullRawBytes, goChan chan bool) {
 	// Range over row results from readRows()
 	var cnt int
 	for data := range dataChan {
@@ -315,13 +351,13 @@ func writeCSV(w io.Writer, dataChan chan []NullRawBytes, goChan chan bool) {
 		}
 
 		// Write CSV
-		err := out.Write(a)
+		err := w.Write(a)
 		checkErr(err)
 
 		// Flush CSV writer contents
 		if cnt > flushSize {
-			out.Flush()
-			err = out.Error()
+			w.Flush()
+			err = w.Error()
 			checkErr(err)
 		}
 
@@ -330,8 +366,8 @@ func writeCSV(w io.Writer, dataChan chan []NullRawBytes, goChan chan bool) {
 	}
 
 	// Flush CSV writer contents
-	out.Flush()
-	err := out.Error()
+	w.Flush()
+	err := w.Error()
 	checkErr(err)
 
 }

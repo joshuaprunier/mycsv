@@ -29,13 +29,13 @@ func checkStdin() {
 		//			checkErr(err)
 		//			fmt.Println("Setting FD to", fd)
 		//
-		//			err = SetStdHandle(syscall.STD_INPUT_HANDLE, fd)
+		//			err = setStdHandle(syscall.STD_INPUT_HANDLE, fd)
 		//			checkErr(err)
 		//		}
 	}
 }
 
-func SetStdHandle(stdhandle int32, handle syscall.Handle) error {
+func setStdHandle(stdhandle int32, handle syscall.Handle) error {
 	r0, _, e1 := syscall.Syscall(procSetStdHandle.Addr(), 2, uintptr(stdhandle), uintptr(handle), 0)
 	if r0 == 0 {
 		if e1 != 0 {
