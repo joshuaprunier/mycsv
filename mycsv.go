@@ -16,7 +16,6 @@ import (
 
 	"golang.org/x/crypto/ssh/terminal"
 
-	"./csv"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -49,27 +48,62 @@ type (
 	}
 )
 
+// ShowUsage prints a help screen
+func showUsage() {
+	fmt.Println(`
+	mycsv usage:
+	mycsv DB_COMMANDS [CSV OUTPUT FLAGS] [DEBUG FLAGS] [CSV OUTFILE] query
+
+	EXAMPLES:
+	mycsv -user=jprunier -p -file=my.csv -query="select * from jjp.example_table where filter in ('1', 'test', 'another')"
+	echo "select * from mysql.plugins" | -user=jprunier -pmypass -hremotedb -tls > my.csv
+	mycsv -user=jprunier -p -file=my.csv -d="|" -q="'" < queryfile
+
+	DATABASE FLAGS
+	==============
+	-user: Username (required)
+	-pass: Password (interactive prompt if blank)
+	-host: Database Host (localhost assumed if blank)
+	-port: Port (3306 default)
+	-tls:  Use TLS/SSL for database connection (false default)
+
+	CSV FORMAT FLAGS
+	================
+	-d: CSV field delimiter ("," default)
+	-q: CSV quote character ("\"" default)
+	-e: CSV escape character ("\\" default)
+	-t: CSV line terminator ("\n" default)
+
+	DEBUG FLAGS
+	===========
+	-debug_cpu: CPU debugging filename
+	-debug_mem: Memory debugging filename
+
+	`)
+}
+
 func main() {
 	start := time.Now()
 
 	// Profiling flags
-	var cpuprofile = flag.String("debug_cpu", "", "write cpu profile to file")
-	var memprofile = flag.String("debug_mem", "", "write memory profile to this file")
+	var cpuprofile = flag.String("debug_cpu", "", "CPU debugging filename")
+	var memprofile = flag.String("debug_mem", "", "Memory debugging filename")
 
 	// Database flags
-	dbUser := flag.String("user", "", "Username")
-	dbPass := flag.String("pass", "", "Password")
-	dbHost := flag.String("host", "", "Database")
+	dbUser := flag.String("user", "", "Username (required)")
+	dbPass := flag.String("pass", "", "Password (interactive prompt if blank)")
+	dbHost := flag.String("host", "", "Database Host (localhost assumed if blank)")
 	dbPort := flag.String("port", "3306", "Port")
-	dbTLS := flag.Bool("tls", false, "TLS")
+	dbTLS := flag.Bool("tls", false, "Use TLS/SSL for database connection")
 
-	// CSV write flags
+	// CSV format flags
 	csvDelimiter := flag.String("d", ",", "CSV field delimiter")
-	csvQuotes := flag.String("q", "\"", "CSV quote character")
+	csvQuote := flag.String("q", "\"", "CSV quote character")
 	csvEscape := flag.String("e", "\\", "CSV escape character")
-	csvEmpty := flag.Bool("qe", true, "CSV quote empty fields")
+	csvTerminator := flag.String("t", "\n", "CSV line terminator")
 
-	csvFile := flag.String("file", "", "CSV filename")
+	csvHeader := flag.Bool("header", true, "Print initial column name header line")
+	csvFile := flag.String("file", "", "CSV output filename")
 	sqlQuery := flag.String("query", "", "MySQL query")
 
 	// Parse flags
@@ -77,13 +111,7 @@ func main() {
 
 	// Print usage
 	if flag.NFlag() == 0 {
-		name := os.Args[0]
-
-		fmt.Println()
-		fmt.Println("	", name, "USAGE:")
-		fmt.Println()
-		flag.PrintDefaults()
-		fmt.Println()
+		showUsage()
 
 		os.Exit(0)
 	}
@@ -172,11 +200,11 @@ func main() {
 	}
 
 	// Create a new CSV writer
-	CSVWriter := csv.NewWriter(writerDest)
-	CSVWriter.Comma, _ = utf8.DecodeLastRuneInString(*csvDelimiter)
-	CSVWriter.Quotes, _ = utf8.DecodeLastRuneInString(*csvQuotes)
+	CSVWriter := NewWriter(writerDest)
+	CSVWriter.Delimiter, _ = utf8.DecodeLastRuneInString(*csvDelimiter)
+	CSVWriter.Quote, _ = utf8.DecodeLastRuneInString(*csvQuote)
 	CSVWriter.Escape, _ = utf8.DecodeLastRuneInString(*csvEscape)
-	CSVWriter.QuoteEmpty = *csvEmpty
+	CSVWriter.Terminator = *csvTerminator
 
 	// Populate dbInfo struct with cli flags
 	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, TLS: *dbTLS}
@@ -193,8 +221,8 @@ func main() {
 	dataChan := make(chan []NullRawBytes)
 	quitChan := make(chan bool)
 	goChan := make(chan bool)
-	go readRows(db, query, dataChan, quitChan, goChan)
-	writeCSV(CSVWriter, dataChan, goChan)
+	go readRows(db, query, dataChan, quitChan, goChan, *csvHeader)
+	rowCount := writeCSV(CSVWriter, dataChan, goChan)
 
 	<-quitChan
 	close(quitChan)
@@ -209,6 +237,7 @@ func main() {
 	}
 
 	fmt.Println()
+	fmt.Println(rowCount, "rows written")
 	fmt.Println("Total runtime =", time.Since(start))
 }
 
@@ -286,7 +315,7 @@ func (nb NullRawBytes) Value() (driver.Value, error) {
 }
 
 // readRows executes a query and returns the rows
-func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan chan bool, goChan chan bool) {
+func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan chan bool, goChan chan bool, csvHeader bool) {
 	rows, err := db.Query(query)
 	defer rows.Close()
 	if err != nil {
@@ -297,12 +326,14 @@ func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan c
 	cols, err := rows.Columns()
 	checkErr(err)
 
-	headers := make([]NullRawBytes, len(cols))
-	for i, col := range cols {
-		headers[i] = NullRawBytes{RawBytes: []byte(col), Valid: true}
+	if csvHeader {
+		headers := make([]NullRawBytes, len(cols))
+		for i, col := range cols {
+			headers[i] = NullRawBytes{RawBytes: []byte(col), Valid: true}
+		}
+		dataChan <- headers
+		<-goChan
 	}
-	dataChan <- headers
-	<-goChan
 
 	// Need to scan into empty interface since we don't know how many columns or their types
 	scanVals := make([]interface{}, len(cols))
@@ -312,14 +343,12 @@ func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan c
 		scanVals[i] = &vals[i]
 	}
 
-	var rowNum int64
 	for rows.Next() {
 		err := rows.Scan(scanVals...)
 		checkErr(err)
 
 		copy(cpy, vals)
 		dataChan <- cpy
-		rowNum++
 
 		// Block until writeRows() signals it is safe to proceed
 		// This is necessary because sql.RawBytes is a memory pointer and rows.Next() will loop and change the memory address before writeRows can properly process the values
@@ -331,31 +360,21 @@ func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan c
 
 	close(dataChan)
 	quitChan <- true
-
-	fmt.Println(rowNum, "rows inserted")
 }
 
 // writeCSV writes csv output
-func writeCSV(w *csv.Writer, dataChan chan []NullRawBytes, goChan chan bool) {
+func writeCSV(w *Writer, dataChan chan []NullRawBytes, goChan chan bool) uint {
+	var cnt uint
 	// Range over row results from readRows()
-	var cnt int
 	for data := range dataChan {
-		a := make([]string, 0)
-		for _, row := range data {
-			cnt += len(row.RawBytes)
-			if row.Valid {
-				a = append(a, string(row.RawBytes))
-			} else {
-				a = append(a, string("\\N"))
-			}
-		}
-
 		// Write CSV
-		err := w.Write(a)
+		size, err := w.Write(data)
 		checkErr(err)
 
+		cnt++
+
 		// Flush CSV writer contents
-		if cnt > flushSize {
+		if size > flushSize {
 			w.Flush()
 			err = w.Error()
 			checkErr(err)
@@ -370,4 +389,5 @@ func writeCSV(w *csv.Writer, dataChan chan []NullRawBytes, goChan chan bool) {
 	err := w.Error()
 	checkErr(err)
 
+	return cnt
 }
