@@ -67,12 +67,16 @@ func showUsage() {
 	-port: Port (3306 default)
 	-tls:  Use TLS/SSL for database connection (false default)
 
-	CSV FORMAT FLAGS
-	================
+	CSV FLAGS
+	=========
+	-file: CSV output filename (Write to stdout if not supplied)
+	-query: MySQL query (required, can be sent via stdin redirection)
+	-header: Print initial column name header line (true default)
 	-d: CSV field delimiter ("," default)
 	-q: CSV quote character ("\"" default)
 	-e: CSV escape character ("\\" default)
 	-t: CSV line terminator ("\n" default)
+	-v: Print more information (false default)
 
 	DEBUG FLAGS
 	===========
@@ -105,6 +109,7 @@ func main() {
 	csvHeader := flag.Bool("header", true, "Print initial column name header line")
 	csvFile := flag.String("file", "", "CSV output filename")
 	sqlQuery := flag.String("query", "", "MySQL query")
+	verbose := flag.Bool("v", false, "Print more information")
 
 	// Parse flags
 	flag.Parse()
@@ -117,20 +122,26 @@ func main() {
 	}
 
 	// Check if an output file was supplied otherwise use standard out
+	var writeTo string
 	var writerDest io.Writer
 	var err error
 	if *csvFile == "" {
-		fmt.Println("CSV output will be written to standard out")
+		writeTo = "standard out"
 		writerDest = os.Stdout
 	} else {
 		f, err := os.Open(*csvFile)
 		if err == nil {
-			fmt.Println(*csvFile, "already exists!")
-			fmt.Println("Please remove it or use a different filename")
+			fmt.Fprintln(os.Stderr, *csvFile, "already exists!")
+			fmt.Fprintln(os.Stderr, "Please remove it or use a different filename")
 			os.Exit(1)
 		}
 		f.Close()
 		writerDest, err = os.Create(*csvFile)
+		writeTo = *csvFile
+	}
+
+	if *verbose {
+		fmt.Println("CSV output will be written to", writeTo)
 	}
 
 	// If query not provided read from standard in
@@ -149,7 +160,7 @@ func main() {
 		case q := <-queryChan:
 			query = q
 		case <-time.After(time.Millisecond * stdinTimeout):
-			fmt.Println("You must supply a query")
+			fmt.Fprintln(os.Stderr, "You must supply a query")
 			os.Exit(1)
 		}
 	} else {
@@ -160,11 +171,11 @@ func main() {
 	checkStdin()
 
 	// Listen for SIGINT (ctrl+c)
-	//catchNotifications()
+	catchNotifications()
 
 	// Make sure the query is a select
 	if query[0:6] != "select" {
-		fmt.Println("Query must be a select!")
+		fmt.Fprintln(os.Stderr, "Query must be a select!")
 		os.Exit(1)
 	}
 
@@ -183,7 +194,7 @@ func main() {
 
 	// Need to provide a target
 	if *dbUser == "" {
-		fmt.Println("You must provide a user name!")
+		fmt.Fprintln(os.Stderr, "You must provide a user name!")
 		os.Exit(1)
 	}
 
@@ -213,7 +224,7 @@ func main() {
 	db, err := dbi.Connect()
 	defer db.Close()
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
@@ -236,9 +247,11 @@ func main() {
 		defer f.Close()
 	}
 
-	fmt.Println()
-	fmt.Println(rowCount, "rows written")
-	fmt.Println("Total runtime =", time.Since(start))
+	if *verbose {
+		fmt.Println()
+		fmt.Println(rowCount, "rows written")
+		fmt.Println("Total runtime =", time.Since(start))
+	}
 }
 
 // Pass the buck error catching
@@ -264,9 +277,14 @@ func catchNotifications() {
 				os.Exit(0)
 			}
 
-			fmt.Println()
-			fmt.Println(sig, "signal caught!")
-			fmt.Printf("Send signal again within %v seconds to exit\n", signalTimeout)
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, sig, "signal caught!")
+			fmt.Fprintf(os.Stderr, "Send signal again within %v seconds to exit\n", signalTimeout)
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "")
 
 			timer = time.Now()
 		}
