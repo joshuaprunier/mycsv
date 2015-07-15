@@ -1,3 +1,7 @@
+// Copyright 2011 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package main
 
 import (
@@ -23,7 +27,8 @@ type Writer struct {
 func NewWriter(w io.Writer) *Writer {
 	return &Writer{
 		Delimiter:  ',',
-		Quote:      '\\',
+		Quote:      '"',
+		Escape:     '\\',
 		Terminator: "\n",
 		w:          bufio.NewWriter(w),
 	}
@@ -103,4 +108,15 @@ func (w *Writer) Flush() {
 func (w *Writer) Error() error {
 	_, err := w.w.Write(nil)
 	return err
+}
+
+// WriteAll writes multiple CSV records to w using Write and then calls Flush.
+func (w *Writer) WriteAll(records [][]NullRawBytes) (err error) {
+	for _, record := range records {
+		_, err = w.Write(record)
+		if err != nil {
+			return err
+		}
+	}
+	return w.w.Flush()
 }
