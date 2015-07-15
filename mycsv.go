@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/pprof"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -121,29 +122,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Check if an output file was supplied otherwise use standard out
-	var writeTo string
-	var writerDest io.Writer
-	var err error
-	if *csvFile == "" {
-		writeTo = "standard out"
-		writerDest = os.Stdout
-	} else {
-		f, err := os.Open(*csvFile)
-		if err == nil {
-			fmt.Fprintln(os.Stderr, *csvFile, "already exists!")
-			fmt.Fprintln(os.Stderr, "Please remove it or use a different filename")
-			os.Exit(1)
-		}
-		f.Close()
-		writerDest, err = os.Create(*csvFile)
-		writeTo = *csvFile
-	}
-
-	if *verbose {
-		fmt.Println("CSV output will be written to", writeTo)
-	}
-
 	// If query not provided read from standard in
 	var query string
 	queryChan := make(chan string)
@@ -167,17 +145,60 @@ func main() {
 		query = *sqlQuery
 	}
 
+	// Make sure the query is a select
+	if strings.ToLower(query[0:6]) != "select" {
+		fmt.Fprintln(os.Stderr, "Query must be a select!")
+		os.Exit(1)
+	}
+
+	// Check if an output file was supplied otherwise use standard out
+	var writeTo string
+	var writerDest io.Writer
+	var err error
+	if *csvFile == "" {
+		writeTo = "standard out"
+		writerDest = os.Stdout
+	} else {
+		f, err := os.Open(*csvFile)
+		if err == nil {
+			fmt.Fprintln(os.Stderr, *csvFile, "already exists!")
+			fmt.Fprintln(os.Stderr, "Please remove it or use a different filename")
+			os.Exit(1)
+		}
+		f.Close()
+		writerDest, err = os.Create(*csvFile)
+		writeTo = *csvFile
+	}
+
+	// Create a new CSV writer
+	var i int
+	CSVWriter := NewWriter(writerDest)
+	CSVWriter.Delimiter, i = utf8.DecodeLastRuneInString(*csvDelimiter)
+	if i == 0 {
+		fmt.Fprintln(os.Stderr, "You must supply a valid delimiter character")
+		os.Exit(1)
+	}
+	CSVWriter.Quote, i = utf8.DecodeLastRuneInString(*csvQuote)
+	if i == 0 {
+		fmt.Fprintln(os.Stderr, "You must supply a valid quote character")
+		os.Exit(1)
+	}
+	CSVWriter.Escape, i = utf8.DecodeLastRuneInString(*csvEscape)
+	if i == 0 {
+		fmt.Fprintln(os.Stderr, "You must supply a valid escape character")
+		os.Exit(1)
+	}
+	CSVWriter.Terminator = *csvTerminator
+
+	if *verbose {
+		fmt.Println("CSV output will be written to", writeTo)
+	}
+
 	// Check if Stdin has been redirected and reset so the user can be prompted for a password
 	checkStdin()
 
 	// Listen for SIGINT (ctrl+c)
 	catchNotifications()
-
-	// Make sure the query is a select
-	if query[0:6] != "select" {
-		fmt.Fprintln(os.Stderr, "Query must be a select!")
-		os.Exit(1)
-	}
 
 	// CPU Profiling
 	if *cpuprofile != "" {
@@ -209,13 +230,6 @@ func main() {
 		}
 		*dbPass = string(pwd)
 	}
-
-	// Create a new CSV writer
-	CSVWriter := NewWriter(writerDest)
-	CSVWriter.Delimiter, _ = utf8.DecodeLastRuneInString(*csvDelimiter)
-	CSVWriter.Quote, _ = utf8.DecodeLastRuneInString(*csvQuote)
-	CSVWriter.Escape, _ = utf8.DecodeLastRuneInString(*csvEscape)
-	CSVWriter.Terminator = *csvTerminator
 
 	// Populate dbInfo struct with cli flags
 	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, TLS: *dbTLS}
