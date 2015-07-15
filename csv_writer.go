@@ -64,16 +64,22 @@ func (w *Writer) Write(record []NullRawBytes) (buf int, err error) {
 			switch rune(byte) {
 			case w.Delimiter:
 				if w.Quote < 0 {
-					_, err = w.w.WriteString(string(w.Escape) + string(w.Delimiter))
+					_, err = w.w.WriteRune(w.Escape)
+					_, err = w.w.WriteRune(w.Delimiter)
+				} else {
+					_, err = w.w.WriteRune(w.Delimiter)
 				}
 			case w.Quote:
-				_, err = w.w.WriteString(string(w.Escape) + string(w.Quote))
+				_, err = w.w.WriteRune(w.Escape)
+				_, err = w.w.WriteRune(w.Quote)
 			case w.Escape:
-				_, err = w.w.WriteString(string(w.Escape) + string(w.Escape))
+				_, err = w.w.WriteRune(w.Escape)
+				_, err = w.w.WriteRune(w.Escape)
 			case 0x00:
-				_, err = w.w.WriteString(string(w.Escape) + "0")
+				_, err = w.w.WriteRune(w.Escape)
+				_, err = w.w.WriteRune('0')
 			default:
-				_, err = w.w.WriteString(string(byte))
+				err = w.w.WriteByte(byte)
 
 			}
 			if err != nil {
