@@ -6,38 +6,37 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"errors"
 	"testing"
 )
 
 // The output must have start and end quotes added as the tests use a default writer
 var writeTests = []struct {
-	Input  [][]NullRawBytes
+	Input  [][]sql.RawBytes
 	Output string
 }{
-	{Input: [][]NullRawBytes{{{[]byte("abc"), true}}}, Output: "\"abc\"\n"},
-	{Input: [][]NullRawBytes{{{[]byte(`"abc"`), true}}}, Output: `"""abc"""` + "\n"},
-	//{Input: [][]NullRawBytes{{`a"b`}}, Output: `"a""b"` + "\n"},
-	//{Input: [][]NullRawBytes{{`"a"b"`}}, Output: `"""a""b"""` + "\n"},
-	//{Input: [][]NullRawBytes{{" abc"}}, Output: `" abc"` + "\n"},
-	//{Input: [][]NullRawBytes{{"abc,def"}}, Output: `"abc,def"` + "\n"},
-	//{Input: [][]NullRawBytes{{"abc", "def"}}, Output: "abc,def\n"},
-	//{Input: [][]NullRawBytes{{"abc"}, {"def"}}, Output: "abc\ndef\n"},
-	//{Input: [][]NullRawBytes{{"abc\ndef"}}, Output: "\"abc\ndef\"\n"},
-	//{Input: [][]NullRawBytes{{"abc\ndef"}}, Output: "\"abc\r\ndef\"\r\n"},
-	//{Input: [][]NullRawBytes{{"abc\rdef"}}, Output: "\"abcdef\"\r\n"},
-	//{Input: [][]NullRawBytes{{"abc\rdef"}}, Output: "\"abc\rdef\"\n"},
-	//{Input: [][]NullRawBytes{{""}}, Output: "\n"},
-	//{Input: [][]NullRawBytes{{"", ""}}, Output: ",\n"},
-	//{Input: [][]NullRawBytes{{"", "", ""}}, Output: ",,\n"},
-	//{Input: [][]NullRawBytes{{"", "", "a"}}, Output: ",,a\n"},
-	//{Input: [][]NullRawBytes{{"", "a", ""}}, Output: ",a,\n"},
-	//{Input: [][]NullRawBytes{{"", "a", "a"}}, Output: ",a,a\n"},
-	//{Input: [][]NullRawBytes{{"a", "", ""}}, Output: "a,,\n"},
-	//{Input: [][]NullRawBytes{{"a", "", "a"}}, Output: "a,,a\n"},
-	//{Input: [][]NullRawBytes{{"a", "a", ""}}, Output: "a,a,\n"},
-	//{Input: [][]NullRawBytes{{"a", "a", "a"}}, Output: "a,a,a\n"},
-	//{Input: [][]NullRawBytes{{`\.`}}, Output: "\"\\.\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte("abc")}}, Output: "\"abc\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte(`"abc"`)}}, Output: `"\"abc\""` + "\n"},
+	{Input: [][]sql.RawBytes{{[]byte(`a"b`)}}, Output: `"a\"b"` + "\n"},
+	{Input: [][]sql.RawBytes{{[]byte(`"a"b"`)}}, Output: `"\"a\"b\""` + "\n"},
+	{Input: [][]sql.RawBytes{{[]byte(" abc")}}, Output: `" abc"` + "\n"},
+	{Input: [][]sql.RawBytes{{[]byte("abc,def")}}, Output: `"abc,def"` + "\n"},
+	{Input: [][]sql.RawBytes{{[]byte("abc"), []byte("def")}}, Output: `"abc","def"` + "\n"},
+	{Input: [][]sql.RawBytes{{[]byte("abc")}, {[]byte("def")}}, Output: `"abc"` + "\n" + `"def"` + "\n"},
+	{Input: [][]sql.RawBytes{{[]byte("abc\ndef")}}, Output: "\"abc\ndef\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte("abc\rdef")}}, Output: "\"abc\rdef\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte("")}}, Output: `""` + "\n"},
+	{Input: [][]sql.RawBytes{{[]byte(""), []byte("")}}, Output: "\"\",\"\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte(""), []byte(""), []byte("")}}, Output: "\"\",\"\",\"\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte(""), []byte(""), []byte("a")}}, Output: "\"\",\"\",\"a\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte(""), []byte("a"), []byte("")}}, Output: "\"\",\"a\",\"\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte(""), []byte("a"), []byte("a")}}, Output: "\"\",\"a\",\"a\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte("a"), []byte(""), []byte("")}}, Output: "\"a\",\"\",\"\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte("a"), []byte(""), []byte("a")}}, Output: "\"a\",\"\",\"a\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte("a"), []byte("a"), []byte("")}}, Output: "\"a\",\"a\",\"\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte("a"), []byte("a"), []byte("a")}}, Output: "\"a\",\"a\",\"a\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte(`\.`)}}, Output: `"\\."` + "\n"},
 }
 
 var empty string
@@ -50,9 +49,9 @@ func TestWrite(t *testing.T) {
 		if err != nil {
 			t.Errorf("Unexpected error: %s\n", err)
 		}
-		out := b.String()
-		if out != tt.Output {
-			t.Errorf("#%d: out=%q want %q", n, out, tt.Output)
+		got := b.String()
+		if got != tt.Output {
+			t.Errorf("#%d: got=%q want=%q", n, got, tt.Output)
 		}
 	}
 }
@@ -63,23 +62,23 @@ func (e errorWriter) Write(b []byte) (int, error) {
 	return 0, errors.New("Test")
 }
 
-//func TestError(t *testing.T) {
-//	b := &bytes.Buffer{}
-//	f := NewWriter(b)
-//	f.Write([]NullRawBytes{{[]byte("abc"), true}})
-//	f.Flush()
-//	err := f.Error()
-//
-//	if err != nil {
-//		t.Errorf("Unexpected error: %s\n", err)
-//	}
-//
-//	f = NewWriter(errorWriter{})
-//	f.Write([]NullRawBytes{{[]byte("abc"), true}})
-//	f.Flush()
-//	err = f.Error()
-//
-//	if err == nil {
-//		t.Error("Error should not be nil")
-//	}
-//}
+func TestError(t *testing.T) {
+	b := &bytes.Buffer{}
+	f := NewWriter(b)
+	f.Write([]sql.RawBytes{[]byte("abc")})
+	f.Flush()
+	err := f.Error()
+
+	if err != nil {
+		t.Errorf("Unexpected error: %s\n", err)
+	}
+
+	f = NewWriter(errorWriter{})
+	f.Write([]sql.RawBytes{[]byte("abc")})
+	f.Flush()
+	err = f.Error()
+
+	if err == nil {
+		t.Error("Error should not be nil")
+	}
+}
