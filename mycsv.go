@@ -102,9 +102,9 @@ func main() {
 	dbTLS := flag.Bool("tls", false, "Use TLS/SSL for database connection")
 
 	// CSV format flags
-	csvDelimiter := flag.String("d", ",", "CSV field delimiter")
-	csvQuote := flag.String("q", "\"", "CSV quote character")
-	csvEscape := flag.String("e", "\\", "CSV escape character")
+	csvDelimiter := flag.String("d", `,`, "CSV field delimiter")
+	csvQuote := flag.String("q", `"`, "CSV quote character")
+	csvEscape := flag.String("e", `\`, "CSV escape character")
 	csvTerminator := flag.String("t", "\n", "CSV line terminator")
 
 	csvHeader := flag.Bool("header", true, "Print initial column name header line")
@@ -188,7 +188,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, "You must supply a valid escape character")
 		os.Exit(1)
 	}
-	CSVWriter.Terminator = *csvTerminator
+
+	// Need literal string check here to see all 4 bytes instead of 2 (ascii 13 & 10)
+	// Newline is default but check here in case it is manually passed in
+	if *csvTerminator == `\r\n` {
+		CSVWriter.Terminator = "\r\n"
+	} else if *csvTerminator == `\n` {
+		CSVWriter.Terminator = "\n"
+	} else {
+		CSVWriter.Terminator = *csvTerminator
+	}
 
 	if *verbose {
 		fmt.Println("CSV output will be written to", writeTo)
