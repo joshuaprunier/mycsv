@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"io"
 )
 
@@ -35,8 +36,7 @@ func NewWriter(w io.Writer) *Writer {
 }
 
 // Writer writes a single CSV record to w along with any necessary quoting.
-// A record is a slice of NullRawBytes so NULL's can be detected and escaped.
-func (w *Writer) Write(record []NullRawBytes) (buf int, err error) {
+func (w *Writer) Write(record []sql.RawBytes) (buf int, err error) {
 	for n, field := range record {
 		// Shortcut exit for empty strings
 		if n > 0 {
@@ -46,8 +46,8 @@ func (w *Writer) Write(record []NullRawBytes) (buf int, err error) {
 		}
 
 		// Check if and escape/translate if field is NULL
-		if !field.Valid {
-			_, err = w.w.WriteString("\\N")
+		if field == nil {
+			_, err = w.w.WriteString(`\N`)
 			continue
 		}
 
@@ -59,9 +59,8 @@ func (w *Writer) Write(record []NullRawBytes) (buf int, err error) {
 		}
 
 		// We need to examine each byte to determine if special characters need to be escaped
-		bytes := field.RawBytes
-		for _, byte := range bytes {
-			switch rune(byte) {
+		for _, f := range field {
+			switch rune(f) {
 			case w.Delimiter:
 				if w.Quote < 0 {
 					_, err = w.w.WriteRune(w.Escape)
@@ -79,7 +78,7 @@ func (w *Writer) Write(record []NullRawBytes) (buf int, err error) {
 				_, err = w.w.WriteRune(w.Escape)
 				_, err = w.w.WriteRune('0')
 			default:
-				err = w.w.WriteByte(byte)
+				err = w.w.WriteByte(f)
 
 			}
 			if err != nil {
@@ -117,7 +116,7 @@ func (w *Writer) Error() error {
 }
 
 // WriteAll writes multiple CSV records to w using Write and then calls Flush.
-func (w *Writer) WriteAll(records [][]NullRawBytes) (err error) {
+func (w *Writer) WriteAll(records [][]sql.RawBytes) (err error) {
 	for _, record := range records {
 		_, err = w.Write(record)
 		if err != nil {

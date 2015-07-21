@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"database/sql/driver"
 	"flag"
 	"fmt"
 	"io"
@@ -40,12 +39,6 @@ type (
 		host string
 		port string
 		TLS  bool
-	}
-
-	// NullRawBytes represents sql.RawBytes which may be null
-	NullRawBytes struct {
-		RawBytes sql.RawBytes
-		Valid    bool
 	}
 )
 
@@ -252,7 +245,7 @@ func main() {
 	}
 
 	// Start reading & writing
-	dataChan := make(chan []NullRawBytes)
+	dataChan := make(chan []sql.RawBytes)
 	quitChan := make(chan bool)
 	goChan := make(chan bool)
 	go readRows(db, query, dataChan, quitChan, goChan, *csvHeader)
@@ -331,32 +324,8 @@ func (dbi *dbInfo) Connect() (*sql.DB, error) {
 	return db, err
 }
 
-// Scan impliments the Scanner interface
-func (nb *NullRawBytes) Scan(value interface{}) error {
-	if value == nil {
-		nb.RawBytes, nb.Valid = []byte(string(0x0)), false
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		nb.RawBytes = v
-	}
-	nb.Valid = true
-
-	return nil
-}
-
-// Value impliments the sql.driver Valuer interface
-func (nb NullRawBytes) Value() (driver.Value, error) {
-	if !nb.Valid {
-		return nil, nil
-	}
-	return nb.RawBytes, nil
-}
-
 // readRows executes a query and returns the rows
-func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan chan bool, goChan chan bool, csvHeader bool) {
+func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan chan bool, goChan chan bool, csvHeader bool) {
 	rows, err := db.Query(query)
 	defer rows.Close()
 	if err != nil {
@@ -368,9 +337,9 @@ func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan c
 	checkErr(err)
 
 	if csvHeader {
-		headers := make([]NullRawBytes, len(cols))
+		headers := make([]sql.RawBytes, len(cols))
 		for i, col := range cols {
-			headers[i] = NullRawBytes{RawBytes: []byte(col), Valid: true}
+			headers[i] = []byte(col)
 		}
 		dataChan <- headers
 		<-goChan
@@ -378,8 +347,8 @@ func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan c
 
 	// Need to scan into empty interface since we don't know how many columns or their types
 	scanVals := make([]interface{}, len(cols))
-	vals := make([]NullRawBytes, len(cols))
-	cpy := make([]NullRawBytes, len(cols))
+	vals := make([]sql.RawBytes, len(cols))
+	cpy := make([]sql.RawBytes, len(cols))
 	for i := range vals {
 		scanVals[i] = &vals[i]
 	}
@@ -404,7 +373,7 @@ func readRows(db *sql.DB, query string, dataChan chan []NullRawBytes, quitChan c
 }
 
 // writeCSV writes csv output
-func writeCSV(w *Writer, dataChan chan []NullRawBytes, goChan chan bool) uint {
+func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool) uint {
 	var cnt uint
 	// Range over row results from readRows()
 	for data := range dataChan {
