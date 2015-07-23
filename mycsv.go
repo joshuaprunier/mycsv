@@ -49,9 +49,9 @@ func showUsage() {
 	mycsv DB_COMMANDS [CSV OUTPUT FLAGS] [DEBUG FLAGS] [CSV OUTFILE] query
 
 	EXAMPLES:
-	mycsv -user=jprunier -p -file=my.csv -query="select * from jjp.example_table where filter in ('1', 'test', 'another')"
-	echo "select * from mysql.plugins" | -user=jprunier -pmypass -hremotedb -tls > my.csv
-	mycsv -user=jprunier -p -file=my.csv -d="|" -q="'" < queryfile
+	mycsv -user=jprunier -pass= -file=my.csv -query="select * from jjp.example_table where filter in ('1', 'test', 'another')"
+	echo "select * from mysql.plugin" | mycsv -user=jprunier -pass=mypass -host=remotedb -tls > my.csv
+	mycsv -user=jprunier -pass= -file=my.csv -d="|" -q="'" < queryfile
 
 	DATABASE FLAGS
 	==============
@@ -249,7 +249,7 @@ func main() {
 	quitChan := make(chan bool)
 	goChan := make(chan bool)
 	go readRows(db, query, dataChan, quitChan, goChan, *csvHeader)
-	rowCount := writeCSV(CSVWriter, dataChan, goChan)
+	rowCount := writeCSV(CSVWriter, dataChan, goChan, *verbose)
 
 	<-quitChan
 	close(quitChan)
@@ -348,7 +348,7 @@ func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan c
 	// Need to scan into empty interface since we don't know how many columns or their types
 	scanVals := make([]interface{}, len(cols))
 	vals := make([]sql.RawBytes, len(cols))
-	cpy := make([]sql.RawBytes, len(cols))
+	//cpy := make([]sql.RawBytes, len(cols))
 	for i := range vals {
 		scanVals[i] = &vals[i]
 	}
@@ -357,8 +357,9 @@ func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan c
 		err := rows.Scan(scanVals...)
 		checkErr(err)
 
-		copy(cpy, vals)
-		dataChan <- cpy
+		//copy(cpy, vals)
+		//dataChan <- cpy
+		dataChan <- vals
 
 		// Block until writeRows() signals it is safe to proceed
 		// This is necessary because sql.RawBytes is a memory pointer and rows.Next() will loop and change the memory address before writeRows can properly process the values
@@ -373,15 +374,28 @@ func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan c
 }
 
 // writeCSV writes csv output
-func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool) uint {
-	var cnt uint
+func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool, verbose bool) uint {
+	var rowsWritten uint
+	var verboseCount uint
+
+	if verbose {
+		fmt.Println("A '.' will be shown for every 1000 CSV rows written")
+	}
+
 	// Range over row results from readRows()
 	for data := range dataChan {
 		// Write CSV
 		size, err := w.Write(data)
 		checkErr(err)
 
-		cnt++
+		rowsWritten++
+		if verbose {
+			verboseCount++
+			if verboseCount == 1000 {
+				fmt.Printf(".")
+				verboseCount = 0
+			}
+		}
 
 		// Flush CSV writer contents
 		if size > flushSize {
@@ -399,5 +413,5 @@ func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool) uint {
 	err := w.Error()
 	checkErr(err)
 
-	return cnt
+	return rowsWritten
 }
