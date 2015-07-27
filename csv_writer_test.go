@@ -24,7 +24,7 @@ var writeTests = []struct {
 	{Input: [][]sql.RawBytes{{[]byte("abc,def")}}, Output: `"abc,def"` + "\n"},
 	{Input: [][]sql.RawBytes{{[]byte("abc"), []byte("def")}}, Output: `"abc","def"` + "\n"},
 	{Input: [][]sql.RawBytes{{[]byte("abc")}, {[]byte("def")}}, Output: `"abc"` + "\n" + `"def"` + "\n"},
-	{Input: [][]sql.RawBytes{{[]byte("abc\ndef")}}, Output: "\"abc\ndef\"\n"},
+	{Input: [][]sql.RawBytes{{[]byte("abc\ndef")}}, Output: "\"abc\\\ndef\"\n"},
 	{Input: [][]sql.RawBytes{{[]byte("abc\rdef")}}, Output: "\"abc\rdef\"\n"},
 	{Input: [][]sql.RawBytes{{[]byte("")}}, Output: `""` + "\n"},
 	{Input: [][]sql.RawBytes{{[]byte(""), []byte("")}}, Output: "\"\",\"\"\n"},

@@ -47,7 +47,8 @@ func (w *Writer) Write(record []sql.RawBytes) (buf int, err error) {
 
 		// Check if and escape/translate if field is NULL
 		if field == nil {
-			_, err = w.w.WriteString(`\N`)
+			_, err = w.w.WriteRune(w.Escape)
+			_, err = w.w.WriteString("N")
 			continue
 		}
 
@@ -77,6 +78,9 @@ func (w *Writer) Write(record []sql.RawBytes) (buf int, err error) {
 			case 0x00:
 				_, err = w.w.WriteRune(w.Escape)
 				_, err = w.w.WriteRune('0')
+			case 0x0A:
+				_, err = w.w.WriteRune(w.Escape)
+				err = w.w.WriteByte(f)
 			default:
 				err = w.w.WriteByte(f)
 
