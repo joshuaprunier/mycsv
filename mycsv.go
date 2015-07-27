@@ -20,25 +20,25 @@ import (
 )
 
 const (
-	// Amount of CSV write data to buffer between flushes
+	// Amount of CSV write data to buffer between flushes.
 	flushSize = 26214400 // 25MB
 
-	// Timeout length where ctrl+c is ignored
-	// If a second ctrl+c is sent before the timeout the program exits
+	// Timeout length where ctrl+c is ignored.
 	signalTimeout = 3 // Seconds
 
-	// Timeout length to wait for a query string sent via stdin
+	// Timeout length to wait for a query string sent via stdin.
 	stdinTimeout = 10 // Milliseconds
 )
 
 type (
 	// dbInfo contains information necessary to connect to a database
 	dbInfo struct {
-		user string
-		pass string
-		host string
-		port string
-		TLS  bool
+		user    string
+		pass    string
+		host    string
+		port    string
+		tls     bool
+		charset string
 	}
 )
 
@@ -49,17 +49,18 @@ func showUsage() {
 	mycsv DB_COMMANDS [CSV OUTPUT FLAGS] [DEBUG FLAGS] [CSV OUTFILE] query
 
 	EXAMPLES:
-	mycsv -user=jprunier -pass= -file=my.csv -query="select * from jjp.example_table where filter in ('1', 'test', 'another')"
+	mycsv -user=jprunier -pass= -file=my.csv -charset=utf8 -query="select * from jjp.example_table where filter in ('1', 'test', 'another')"
 	echo "select * from mysql.plugin" | mycsv -user=jprunier -pass=mypass -host=remotedb -tls > my.csv
 	mycsv -user=jprunier -pass= -file=my.csv -d="|" -q="'" < queryfile
 
 	DATABASE FLAGS
 	==============
-	-user: Username (required)
-	-pass: Password (interactive prompt if blank)
+	-user: Database Username (required)
+	-pass: Database Password (interactive prompt if blank)
 	-host: Database Host (localhost assumed if blank)
-	-port: Port (3306 default)
+	-port: Database Port (3306 default)
 	-tls:  Use TLS/SSL for database connection (false default)
+	-charset: Database character set (binary default)
 
 	CSV FLAGS
 	=========
@@ -88,11 +89,12 @@ func main() {
 	var memprofile = flag.String("debug_mem", "", "Memory debugging filename")
 
 	// Database flags
-	dbUser := flag.String("user", "", "Username (required)")
-	dbPass := flag.String("pass", "", "Password (interactive prompt if blank)")
+	dbUser := flag.String("user", "", "Database Username (required)")
+	dbPass := flag.String("pass", "", "Database Password (interactive prompt if blank)")
 	dbHost := flag.String("host", "", "Database Host (localhost assumed if blank)")
-	dbPort := flag.String("port", "3306", "Port")
+	dbPort := flag.String("port", "3306", "Database Port")
 	dbTLS := flag.Bool("tls", false, "Use TLS/SSL for database connection")
+	dbCharset := flag.String("charset", "binary", "Database character set")
 
 	// CSV format flags
 	csvDelimiter := flag.String("d", `,`, "CSV field delimiter")
@@ -234,7 +236,7 @@ func main() {
 	}
 
 	// Populate dbInfo struct with cli flags
-	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, TLS: *dbTLS}
+	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, tls: *dbTLS, charset: *dbCharset}
 
 	// Create a *sql.DB connection to the source database
 	db, err := dbi.Connect()
@@ -311,10 +313,10 @@ func catchNotifications() {
 func (dbi *dbInfo) Connect() (*sql.DB, error) {
 	var db *sql.DB
 	var err error
-	if dbi.TLS {
-		db, err = sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1&tls=skip-verify")
+	if dbi.tls {
+		db, err = sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1&tls=skip-verify&charset="+dbi.charset)
 	} else {
-		db, err = sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1")
+		db, err = sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1&charset="+dbi.charset)
 	}
 	checkErr(err)
 
