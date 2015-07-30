@@ -372,7 +372,7 @@ func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool, verbose
 	var verboseCount uint
 
 	if verbose {
-		fmt.Println("A '.' will be shown for every 1000 CSV rows written")
+		fmt.Println("A '.' will be shown for every 10,000 CSV rows written")
 	}
 
 	// Range over row results from readRows()
@@ -384,7 +384,7 @@ func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool, verbose
 		rowsWritten++
 		if verbose {
 			verboseCount++
-			if verboseCount == 1000 {
+			if verboseCount == 10000 {
 				fmt.Printf(".")
 				verboseCount = 0
 			}
