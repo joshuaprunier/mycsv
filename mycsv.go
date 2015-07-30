@@ -21,7 +21,7 @@ import (
 
 const (
 	// Amount of CSV write data to buffer between flushes.
-	flushSize = 26214400 // 25MB
+	flushBufferSize = 26214400 // 25MB
 
 	// Timeout length where ctrl+c is ignored.
 	signalTimeout = 3 // Seconds
@@ -93,12 +93,13 @@ func main() {
 	dbPort := flag.String("port", "3306", "Database Port")
 	dbCharset := flag.String("charset", "binary", "Database character set")
 
-	// CSV format flags
+	// CSV formatting flags
 	csvDelimiter := flag.String("d", `,`, "CSV field delimiter")
 	csvQuote := flag.String("q", `"`, "CSV quote character")
 	csvEscape := flag.String("e", `\`, "CSV escape character")
 	csvTerminator := flag.String("t", "\n", "CSV line terminator")
 
+	// Other flags
 	csvHeader := flag.Bool("header", true, "Print initial column name header line")
 	csvFile := flag.String("file", "", "CSV output filename")
 	sqlQuery := flag.String("query", "", "MySQL query")
@@ -143,7 +144,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Check if an output file was supplied otherwise use standard out
+	// Create CSV output file if supplied, otherwise use standard out
 	var writeTo string
 	var writerDest io.Writer
 	var err error
@@ -198,7 +199,7 @@ func main() {
 	// Check if Stdin has been redirected and reset so the user can be prompted for a password
 	checkStdin()
 
-	// Listen for SIGINT (ctrl+c)
+	// Catch signals
 	catchNotifications()
 
 	// CPU Profiling
@@ -232,7 +233,7 @@ func main() {
 		*dbPass = string(pwd)
 	}
 
-	// Populate dbInfo struct with cli flags
+	// Populate dbInfo struct with flag values
 	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, charset: *dbCharset}
 
 	// Create a *sql.DB connection to the source database
@@ -243,13 +244,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start reading & writing
+	// Create channels
 	dataChan := make(chan []sql.RawBytes)
 	quitChan := make(chan bool)
 	goChan := make(chan bool)
+
+	// Start reading & writing
 	go readRows(db, query, dataChan, quitChan, goChan, *csvHeader)
 	rowCount := writeCSV(CSVWriter, dataChan, goChan, *verbose)
 
+	// Block on quitChan until readRows() completes
 	<-quitChan
 	close(quitChan)
 	close(goChan)
@@ -276,17 +280,19 @@ func checkErr(e error) {
 	}
 }
 
+// Catch signals
 func catchNotifications() {
 	state, err := terminal.GetState(int(os.Stdin.Fd()))
 	checkErr(err)
 
-	// Trap for SIGINT
+	// Deal with SIGINT
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
 
 	var timer time.Time
 	go func() {
 		for sig := range sigChan {
+			// Prevent exiting on accidental signal send
 			if time.Now().Sub(timer) < time.Second*signalTimeout {
 				terminal.Restore(int(os.Stdin.Fd()), state)
 				os.Exit(0)
@@ -306,7 +312,7 @@ func catchNotifications() {
 	}()
 }
 
-// Create a database connection object
+// Create and return a database handle
 func (dbi *dbInfo) Connect() (*sql.DB, error) {
 	db, err := sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1&tls=skip-verify&charset="+dbi.charset)
 	checkErr(err)
@@ -317,7 +323,7 @@ func (dbi *dbInfo) Connect() (*sql.DB, error) {
 	return db, err
 }
 
-// readRows executes a query and returns the rows
+// readRows executes a query and sends each row over a channel to be consumed
 func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan chan bool, goChan chan bool, csvHeader bool) {
 	rows, err := db.Query(query)
 	defer rows.Close()
@@ -329,6 +335,7 @@ func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan c
 	cols, err := rows.Columns()
 	checkErr(err)
 
+	// Write columns as a header line
 	if csvHeader {
 		headers := make([]sql.RawBytes, len(cols))
 		for i, col := range cols {
@@ -338,10 +345,9 @@ func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan c
 		<-goChan
 	}
 
-	// Need to scan into empty interface since we don't know how many columns or their types
+	// Need to scan into empty interface since we don't know how many columns a query might return
 	scanVals := make([]interface{}, len(cols))
 	vals := make([]sql.RawBytes, len(cols))
-	//cpy := make([]sql.RawBytes, len(cols))
 	for i := range vals {
 		scanVals[i] = &vals[i]
 	}
@@ -350,12 +356,11 @@ func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan c
 		err := rows.Scan(scanVals...)
 		checkErr(err)
 
-		//copy(cpy, vals)
-		//dataChan <- cpy
 		dataChan <- vals
 
-		// Block until writeRows() signals it is safe to proceed
-		// This is necessary because sql.RawBytes is a memory pointer and rows.Next() will loop and change the memory address before writeRows can properly process the values
+		// Block and wait for writeRows() to signal back it has consumed the data
+		// This is necessary because sql.RawBytes is a memory pointer and when rows.Next()
+		// loops and change the memory address before writeRows can properly process the values
 		<-goChan
 	}
 
@@ -366,7 +371,7 @@ func readRows(db *sql.DB, query string, dataChan chan []sql.RawBytes, quitChan c
 	quitChan <- true
 }
 
-// writeCSV writes csv output
+// writeCSV reads from a channel and writes CSV output
 func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool, verbose bool) uint {
 	var rowsWritten uint
 	var verboseCount uint
@@ -377,10 +382,11 @@ func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool, verbose
 
 	// Range over row results from readRows()
 	for data := range dataChan {
-		// Write CSV
+		// Format the data to CSV and write
 		size, err := w.Write(data)
 		checkErr(err)
 
+		// Visual write indicator when verbose is enabled
 		rowsWritten++
 		if verbose {
 			verboseCount++
@@ -390,18 +396,18 @@ func writeCSV(w *Writer, dataChan chan []sql.RawBytes, goChan chan bool, verbose
 			}
 		}
 
-		// Flush CSV writer contents
-		if size > flushSize {
+		// Flush CSV writer contents once it exceeds flushBufferSize
+		if size > flushBufferSize {
 			w.Flush()
 			err = w.Error()
 			checkErr(err)
 		}
 
-		// Allow read function to unblock and loop over rows
+		// Signal back to readRows() it can loop and scan the next row
 		goChan <- true
 	}
 
-	// Flush CSV writer contents
+	// Flush remaining CSV writer contents
 	w.Flush()
 	err := w.Error()
 	checkErr(err)
