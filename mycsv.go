@@ -37,7 +37,6 @@ type (
 		pass    string
 		host    string
 		port    string
-		tls     bool
 		charset string
 	}
 )
@@ -50,7 +49,7 @@ func showUsage() {
 
 	EXAMPLES:
 	mycsv -user=jprunier -pass= -file=my.csv -charset=utf8 -query="select * from jjp.example_table where filter in ('1', 'test', 'another')"
-	echo "select * from mysql.plugin" | mycsv -user=jprunier -pass=mypass -host=remotedb -tls > my.csv
+	echo "select * from mysql.plugin" | mycsv -user=jprunier -pass=mypass -host=remotedb > my.csv
 	mycsv -user=jprunier -pass= -file=my.csv -d="|" -q="'" < queryfile
 
 	DATABASE FLAGS
@@ -59,7 +58,6 @@ func showUsage() {
 	-pass: Database Password (interactive prompt if blank)
 	-host: Database Host (localhost assumed if blank)
 	-port: Database Port (3306 default)
-	-tls:  Use TLS/SSL for database connection (false default)
 	-charset: Database character set (binary default)
 
 	CSV FLAGS
@@ -93,7 +91,6 @@ func main() {
 	dbPass := flag.String("pass", "", "Database Password (interactive prompt if blank)")
 	dbHost := flag.String("host", "", "Database Host (localhost assumed if blank)")
 	dbPort := flag.String("port", "3306", "Database Port")
-	dbTLS := flag.Bool("tls", false, "Use TLS/SSL for database connection")
 	dbCharset := flag.String("charset", "binary", "Database character set")
 
 	// CSV format flags
@@ -236,7 +233,7 @@ func main() {
 	}
 
 	// Populate dbInfo struct with cli flags
-	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, tls: *dbTLS, charset: *dbCharset}
+	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, charset: *dbCharset}
 
 	// Create a *sql.DB connection to the source database
 	db, err := dbi.Connect()
@@ -311,13 +308,7 @@ func catchNotifications() {
 
 // Create a database connection object
 func (dbi *dbInfo) Connect() (*sql.DB, error) {
-	var db *sql.DB
-	var err error
-	if dbi.tls {
-		db, err = sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1&tls=skip-verify&charset="+dbi.charset)
-	} else {
-		db, err = sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1&charset="+dbi.charset)
-	}
+	db, err := sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1&tls=skip-verify&charset="+dbi.charset)
 	checkErr(err)
 
 	// Ping database to verify credentials
