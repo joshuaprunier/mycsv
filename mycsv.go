@@ -105,11 +105,15 @@ func main() {
 	sqlQuery := flag.String("query", "", "MySQL query")
 	verbose := flag.Bool("v", false, "Print more information")
 
+	// Override default help
+	help := flag.Bool("help", false, "Show usage")
+	h := flag.Bool("h", false, "Show usage")
+
 	// Parse flags
 	flag.Parse()
 
 	// Print usage
-	if flag.NFlag() == 0 {
+	if flag.NFlag() == 0 || *help == true || *h == true {
 		showUsage()
 
 		os.Exit(0)
