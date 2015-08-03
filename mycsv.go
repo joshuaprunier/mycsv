@@ -41,10 +41,14 @@ type (
 	}
 )
 
+// Version information supplied by build script
+var versionInformation string
+
 // ShowUsage prints a help screen
 func showUsage() {
+	fmt.Printf("\tmycsv version %s\n", versionInformation)
 	fmt.Println(`
-	mycsv usage:
+	USAGE:
 	mycsv DB_COMMANDS [CSV OUTPUT FLAGS] [DEBUG FLAGS] [CSV OUTFILE] query
 
 	EXAMPLES:
@@ -75,16 +79,13 @@ func showUsage() {
 	===========
 	-debug_cpu: CPU debugging filename
 	-debug_mem: Memory debugging filename
+	-version: Version information
 
 	`)
 }
 
 func main() {
 	start := time.Now()
-
-	// Profiling flags
-	var cpuprofile = flag.String("debug_cpu", "", "CPU debugging filename")
-	var memprofile = flag.String("debug_mem", "", "Memory debugging filename")
 
 	// Database flags
 	dbUser := flag.String("user", "", "Database Username (required)")
@@ -94,16 +95,19 @@ func main() {
 	dbCharset := flag.String("charset", "binary", "Database character set")
 
 	// CSV formatting flags
+	csvFile := flag.String("file", "", "CSV output filename")
+	csvQuery := flag.String("query", "", "MySQL query")
+	csvHeader := flag.Bool("header", true, "Print initial column name header line")
 	csvDelimiter := flag.String("d", `,`, "CSV field delimiter")
 	csvQuote := flag.String("q", `"`, "CSV quote character")
 	csvEscape := flag.String("e", `\`, "CSV escape character")
 	csvTerminator := flag.String("t", "\n", "CSV line terminator")
-
-	// Other flags
-	csvHeader := flag.Bool("header", true, "Print initial column name header line")
-	csvFile := flag.String("file", "", "CSV output filename")
-	sqlQuery := flag.String("query", "", "MySQL query")
 	verbose := flag.Bool("v", false, "Print more information")
+
+	// Debug flags
+	cpuprofile := flag.String("debug_cpu", "", "CPU debugging filename")
+	memprofile := flag.String("debug_mem", "", "Memory debugging filename")
+	version := flag.Bool("version", false, "Version information")
 
 	// Override default help
 	help := flag.Bool("help", false, "Show usage")
@@ -119,11 +123,16 @@ func main() {
 		os.Exit(0)
 	}
 
+	if *version {
+		fmt.Printf("mycsv version %s\n", versionInformation)
+		os.Exit(0)
+	}
+
 	// If query not provided read from standard in
 	var query string
 	queryChan := make(chan string)
 	defer close(queryChan)
-	if *sqlQuery == "" {
+	if *csvQuery == "" {
 		go func() {
 			b, err := ioutil.ReadAll(os.Stdin)
 			checkErr(err)
@@ -139,7 +148,7 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		query = *sqlQuery
+		query = *csvQuery
 	}
 
 	// Make sure the query is a select
