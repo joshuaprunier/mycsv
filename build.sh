@@ -43,9 +43,9 @@ echo "Building Darwin"
 mkdir -p bin/darwin
 GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.versionInformation $version" -o bin/darwin/mycsv mycsv.go csv_writer.go reset_unix.go
 if [[ $? -eq 0 ]]; then
-	echo "	mycsv_mac - OK"
+	echo "	mycsv - OK"
 else
-	echo "	mycsv_mac - FAILED"
+	echo "	mycsv - FAILED"
 fi
 
 echo
