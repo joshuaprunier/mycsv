@@ -36,6 +36,19 @@ Building Darwin
         mycsv - OK
 
 Done!
+
+$ ls -R bin
+bin:
+darwin  linux  windows
+
+bin/darwin:
+mycsv
+
+bin/linux:
+mycsv
+
+bin/windows:
+mycsv.exe
 ```
 
 Usage
