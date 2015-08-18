@@ -173,6 +173,10 @@ func main() {
 		}
 		f.Close()
 		writerDest, err = os.Create(*csvFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		writeTo = *csvFile
 	}
 
