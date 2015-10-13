@@ -12,7 +12,6 @@ import (
 	"runtime/pprof"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"golang.org/x/crypto/ssh/terminal"
 
@@ -181,23 +180,14 @@ func main() {
 	}
 
 	// Create a new CSV writer
-	var i int
 	CSVWriter := NewWriter(writerDest)
-	CSVWriter.Delimiter, i = utf8.DecodeLastRuneInString(*csvDelimiter)
-	if i == 0 {
-		fmt.Fprintln(os.Stderr, "You must supply a valid delimiter character")
-		os.Exit(1)
+	if *csvDelimiter == `\t` {
+		CSVWriter.Delimiter = "\t"
+	} else {
+		CSVWriter.Delimiter = *csvDelimiter
 	}
-	CSVWriter.Quote, i = utf8.DecodeLastRuneInString(*csvQuote)
-	if i == 0 {
-		fmt.Fprintln(os.Stderr, "You must supply a valid quote character")
-		os.Exit(1)
-	}
-	CSVWriter.Escape, i = utf8.DecodeLastRuneInString(*csvEscape)
-	if i == 0 {
-		fmt.Fprintln(os.Stderr, "You must supply a valid escape character")
-		os.Exit(1)
-	}
+	CSVWriter.Quote = *csvQuote
+	CSVWriter.Escape = *csvEscape
 
 	// Need literal string check here to see all 4 bytes instead of 2 (ascii 13 & 10)
 	// Newline is default but check here in case it is manually passed in

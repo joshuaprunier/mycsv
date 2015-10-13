@@ -17,9 +17,9 @@ import (
 // characters with a back slash and lines are terminated with a newline. The exported fields
 // can be changed to customize the details before the first call to Write or WriteAll.
 type Writer struct {
-	Delimiter  rune   // Field delimiter (set to ',' by NewWriter)
-	Quote      rune   // Quote character
-	Escape     rune   // Escape character
+	Delimiter  string // Field delimiter (set to ',' by NewWriter)
+	Quote      string // Quote character
+	Escape     string // Escape character
 	Terminator string // Character to end each line
 	w          *bufio.Writer
 }
@@ -27,9 +27,9 @@ type Writer struct {
 // NewWriter returns a new Writer that writes to w.
 func NewWriter(w io.Writer) *Writer {
 	return &Writer{
-		Delimiter:  ',',
-		Quote:      '"',
-		Escape:     '\\',
+		Delimiter:  ",",
+		Quote:      "\"",
+		Escape:     "\\",
 		Terminator: "\n",
 		w:          bufio.NewWriter(w),
 	}
@@ -40,46 +40,46 @@ func (w *Writer) Write(record []sql.RawBytes) (buf int, err error) {
 	for n, field := range record {
 		// Shortcut exit for empty strings
 		if n > 0 {
-			if _, err = w.w.WriteRune(w.Delimiter); err != nil {
+			if _, err = w.w.WriteString(w.Delimiter); err != nil {
 				return
 			}
 		}
 
 		// Check if and escape/translate if field is NULL
 		if field == nil {
-			_, err = w.w.WriteRune(w.Escape)
+			_, err = w.w.WriteString(w.Escape)
 			_, err = w.w.WriteString("N")
 			continue
 		}
 
 		// Write quote character if set
-		if w.Quote > 0 {
-			if _, err = w.w.WriteRune(w.Quote); err != nil {
+		if w.Quote != "" {
+			if _, err = w.w.WriteString(w.Quote); err != nil {
 				return
 			}
 		}
 
 		// We need to examine each byte to determine if special characters need to be escaped
 		for _, f := range field {
-			switch rune(f) {
+			switch string(f) {
 			case w.Delimiter:
-				if w.Quote < 0 {
-					_, err = w.w.WriteRune(w.Escape)
-					_, err = w.w.WriteRune(w.Delimiter)
+				if w.Quote == "" {
+					_, err = w.w.WriteString(w.Escape)
+					_, err = w.w.WriteString(w.Delimiter)
 				} else {
-					_, err = w.w.WriteRune(w.Delimiter)
+					_, err = w.w.WriteString(w.Delimiter)
 				}
 			case w.Quote:
-				_, err = w.w.WriteRune(w.Escape)
-				_, err = w.w.WriteRune(w.Quote)
+				_, err = w.w.WriteString(w.Escape)
+				_, err = w.w.WriteString(w.Quote)
 			case w.Escape:
-				_, err = w.w.WriteRune(w.Escape)
-				_, err = w.w.WriteRune(w.Escape)
-			case 0x00:
-				_, err = w.w.WriteRune(w.Escape)
+				_, err = w.w.WriteString(w.Escape)
+				_, err = w.w.WriteString(w.Escape)
+			case string(0x00):
+				_, err = w.w.WriteString(w.Escape)
 				_, err = w.w.WriteRune('0')
-			case 0x0A:
-				_, err = w.w.WriteRune(w.Escape)
+			case string(0x0A):
+				_, err = w.w.WriteString(w.Escape)
 				err = w.w.WriteByte(f)
 			default:
 				err = w.w.WriteByte(f)
@@ -91,8 +91,8 @@ func (w *Writer) Write(record []sql.RawBytes) (buf int, err error) {
 		}
 
 		// Write quote character if set
-		if w.Quote > 0 {
-			if _, err = w.w.WriteRune(w.Quote); err != nil {
+		if w.Quote != "" {
+			if _, err = w.w.WriteString(w.Quote); err != nil {
 				return
 			}
 		}
