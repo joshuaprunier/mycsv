@@ -37,6 +37,7 @@ type (
 		host    string
 		port    string
 		charset string
+		tls     bool
 	}
 )
 
@@ -62,6 +63,8 @@ func showUsage() {
 	-host: Database Host (localhost assumed if blank)
 	-port: Database Port (3306 default)
 	-charset: Database character set (binary default)
+	-tls: Use TLS, also enables cleartext passwords (default false)
+
 
 	CSV FLAGS
 	=========
@@ -92,6 +95,7 @@ func main() {
 	dbHost := flag.String("host", "", "Database Host (localhost assumed if blank)")
 	dbPort := flag.String("port", "3306", "Database Port")
 	dbCharset := flag.String("charset", "binary", "Database character set")
+	dbTLS := flag.Bool("tls", false, "MySQL socket")
 
 	// CSV formatting flags
 	csvFile := flag.String("file", "", "CSV output filename")
@@ -241,10 +245,10 @@ func main() {
 	}
 
 	// Populate dbInfo struct with flag values
-	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, charset: *dbCharset}
+	dbi := dbInfo{user: *dbUser, pass: *dbPass, host: *dbHost, port: *dbPort, charset: *dbCharset, tls: *dbTLS}
 
 	// Create a *sql.DB connection to the source database
-	db, err := dbi.Connect()
+	db, err := dbi.connect()
 	defer db.Close()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -320,8 +324,16 @@ func catchNotifications() {
 }
 
 // Create and return a database handle
-func (dbi *dbInfo) Connect() (*sql.DB, error) {
-	db, err := sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?allowCleartextPasswords=1&tls=skip-verify&charset="+dbi.charset)
+func (dbi *dbInfo) connect() (*sql.DB, error) {
+	// Set MySQL driver parameters
+	dbParameters := "charset=" + dbi.charset
+
+	// Append cleartext and tls parameters if TLS is specified
+	if dbi.tls == true {
+		dbParameters = dbParameters + "&allowCleartextPasswords=1&tls=skip-verify"
+	}
+
+	db, err := sql.Open("mysql", dbi.user+":"+dbi.pass+"@tcp("+dbi.host+":"+dbi.port+")/?"+dbParameters)
 	checkErr(err)
 
 	// Ping database to verify credentials
