@@ -95,7 +95,7 @@ func main() {
 	dbHost := flag.String("host", "", "Database Host (localhost assumed if blank)")
 	dbPort := flag.String("port", "3306", "Database Port")
 	dbCharset := flag.String("charset", "binary", "Database character set")
-	dbTLS := flag.Bool("tls", false, "MySQL socket")
+	dbTLS := flag.Bool("tls", false, "Enable TLS & cleartext passwords")
 
 	// CSV formatting flags
 	csvFile := flag.String("file", "", "CSV output filename")
