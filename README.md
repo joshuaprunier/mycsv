@@ -4,7 +4,7 @@ A command line tool for writing CSV files from MySQL queries. MySQL has a "selec
 **Features:**
 * Customizable CSV format
 * Write initial header line based on columns in query
-* Cross platform (linux, darwin & windows)*
+* Cross platform (linux, osx & windows)*
 * Supports SSL configured MySQL accounts
 * Designed for interative and non-interactive use
 * Write to a file destination or stdout for redirection or piping
@@ -15,10 +15,19 @@ A command line tool for writing CSV files from MySQL queries. MySQL has a "selec
 
 **Stdin redirection not supported on windows
 
+Dependencies
+------------
+[Go](http://golang.org/doc/install)  
+[Git](http://git-scm.com/downloads) required for `go get`
+
 Installation
 --
 ```shell
 $ go get -d github.com/joshuaprunier/mycsv
+
+or
+
+git clone https://github.com/joshuaprunier/mycsv.git
 
 $ ./build.sh
 
@@ -97,25 +106,21 @@ Examples
 mycsv -user=jprunier -pass= -host=db1 -file=my.csv \
 -query="select * from test.table1 where filter in ('1', 'test', 'another')"
 ```
-<br>
 ##### Customize header line column names
 ```shell
 mycsv -user=jprunier -pass= -host=db1 -file=my.csv \
 -query="select a as 'column1', b, c as 'column c' from test.table2"
 ```
-<br>
 ##### UTF8 output and do not write the colum header line
 ```shell
 mycsv -user=jprunier -pass= -host=db1 -file=my.csv -charset=utf8 -header=false\
 -query="select * from test.table1 where filter in ('1', 'test', 'another')"
 ```
-<br>
 ##### Change CSV format - pipe delimited, fields single quoted, lines terminated by carriage return & newline
 ```shell
 mycsv -user=jprunier -pass= -host=db1 -file=my.csv -d="|" -q="'" -t="\r\n"\
 -query="select * from test.table1 where filter in ('1', 'test', 'another')"
 ```
-<br>
 ##### Get query from stdin
 ```shell
 echo "select * from test.table1 where filter in ('1', 'test', 'another')" |\
@@ -126,13 +131,11 @@ or
 echo "select * from test.table1 where filter in ('1', 'test', 'another')" > myquery
 mycsv -user=jprunier -pass= -host=db1 -file=my.csv < myquery
 ```
-<br>
 ##### Pipe stdout to change \N to the word NULL and write to a file
 ```shell
 mycsv -user=jprunier -pass=mypass -host=db1 \
 -query="select * from test.table1 where filter in ('1', 'test', 'another')" | sed 's/\\N/NULL/g' > my.csv
 ```
-<br>
 ##### Show information during execution
 ```shell
 mycsv -user=jprunier -pass=mypass -host=db1 -file=my.csv -query="select * from test.table3 limit 100000" -v
@@ -141,10 +144,8 @@ A '.' will be shown for every 10,000 CSV rows written
 ..........
 100001 rows written
 Total runtime = 10.269565988s
-
 ```
 
 License
 --
 [MIT] (LICENSE)
-
